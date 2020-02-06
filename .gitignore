@@ -1,0 +1,11 @@
+/.idea
+/.idea_modules
+/.classpath
+/.project
+/.settings
+/.gradle
+/build
+/logs
+*~
+*.BAK
+*.OLD
