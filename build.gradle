@@ -43,14 +43,13 @@ dependencies {
 
 }
 
+mainClassName = "org.splink.cpipe.CPipe"
 shadowJar {
-    baseName = "cpipe2"
-    classifier = null
-    version = "0.0.1-SNAPSHOT"
     exclude "application.conf", "logback.xml"
-    mainClassName = "com.restore.cpipe2.Main"
     mergeServiceFiles()
 }
+
+jar.dependsOn(shadowJar)
 
 // Avoid doing a zip and a tar file, we only need the jar file.
 assemble.dependsOn.clear()

@@ -1,60 +1,64 @@
 package org.splink.cpipe
 
+import org.splink.cpipe.CPipe.{ElapsedSecondFormat, createSessionFrom, exportConfig}
 import org.splink.cpipe.processors.{Exporter, Exporter2, Importer, Importer2, Transporter}
 import org.splink.cpipe.config.{Arguments, Config, Connection}
 
 import scala.language.implicitConversions
 import scala.util.{Failure, Success, Try}
 
+class CPipe(args: Array[String]) {
+  Config.fromArguments(new Arguments(args.toSeq)).foreach { config =>
+    if (config.flags.showProgress) Output.update("Connecting to cassandra.")
+
+    val session = createSessionFrom(config.from, config)
+    session.execute(s"use ${config.selection.keyspace}")
+
+    if (config.flags.showProgress)
+      Output.update(s"Connected to cassandra ${session.getCluster.getClusterName}")
+
+    val start = System.currentTimeMillis()
+
+    val rowCount = Try {
+      config.mode match {
+        case "import" =>
+          new Importer().process(session, config)
+        case "import2" =>
+          new Importer2().process(session, config)
+        case "export" =>
+          new Exporter().process(session, exportConfig(config))
+        case "export2" =>
+          if (session.getCluster.getMetadata.getPartitioner == "org.apache.cassandra.dht.Murmur3Partitioner") {
+            new Exporter2().process(session, exportConfig(config))
+          } else {
+            Output.log("mode 'export2' requires the cluster to use 'Murmur3Partitioner'")
+          }
+        case "transporter" => {
+          val toSession = createSessionFrom(config.to.get, config)
+          Transporter(session, toSession).process(config.selection,config.toSelection, _ => true )
+        }
+      }
+    } match {
+      case Success(count) => count
+      case Failure(e) =>
+        Output.log(
+          s"\nError during '${config.mode}': message: '${if (e != null) e.getMessage else ""}'"
+        )
+        System.exit(1)
+        0
+    }
+
+    if (config.flags.showProgress) {
+      val sec = (System.currentTimeMillis() - start) / 1000
+      Output.log(s"\nProcessing $rowCount rows took ${ElapsedSecondFormat(sec)}s")
+    }
+  }
+}
+
 object CPipe {
 
   def main(args: Array[String]): Unit = {
-    Config.fromArguments(new Arguments(args.toSeq)).foreach { config =>
-      if (config.flags.showProgress) Output.update("Connecting to cassandra.")
-
-      val session = createSessionFrom(config.from, config)
-      session.execute(s"use ${config.selection.keyspace}")
-
-      if (config.flags.showProgress)
-        Output.update(s"Connected to cassandra ${session.getCluster.getClusterName}")
-
-      val start = System.currentTimeMillis()
-
-      val rowCount = Try {
-        config.mode match {
-          case "import" =>
-            new Importer().process(session, config)
-          case "import2" =>
-            new Importer2().process(session, config)
-          case "export" =>
-            new Exporter().process(session, exportConfig(config))
-          case "export2" =>
-            if (session.getCluster.getMetadata.getPartitioner == "org.apache.cassandra.dht.Murmur3Partitioner") {
-              new Exporter2().process(session, exportConfig(config))
-            } else {
-              Output.log("mode 'export2' requires the cluster to use 'Murmur3Partitioner'")
-            }
-          case "transporter" => {
-            val toSession = createSessionFrom(config.to.get, config)
-            Transporter(session, toSession).process(config.selection,config.toSelection, _ => true )
-          }
-        }
-      } match {
-        case Success(count) => count
-        case Failure(e) =>
-          Output.log(
-            s"\nError during '${config.mode}': message: '${if (e != null) e.getMessage else ""}'"
-          )
-          System.exit(1)
-          0
-      }
-
-      if (config.flags.showProgress) {
-        val sec = (System.currentTimeMillis() - start) / 1000
-        Output.log(s"\nProcessing $rowCount rows took ${ElapsedSecondFormat(sec)}s")
-      }
-    }
-
+    new CPipe(args)
     System.exit(0)
   }
 
