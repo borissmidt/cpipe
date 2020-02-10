@@ -22,14 +22,15 @@ dependencies {
     compile "org.slf4j:slf4j-api:${slf4jVersion}"
 
 
-    compile "com.typesafe:config:${typesafeVersion}"
+    compile "com.typ" +
+        "esafe:config:${typesafeVersion}"
 
     // Cassandra
     compile "com.datastax.cassandra:cassandra-driver-core:3.6.0"
     compile "org.rogach:scallop_$scalaLangVersion:3.3.2"
     compile "ch.qos.logback:logback-classic:1.2.3"
     compile "net.jpountz.lz4:lz4:1.3.0"
-
+    compile "com.lihaoyi:ammonite_$scalaLibVersion:2.0.4"
     //todo use other json lib: compile "com.lihaoyi:ujson_$scalaLangVersion:0.9.8"
     compile "com.typesafe.scala-logging:scala-logging_2.13:3.9.2"
     def playJsonV = "2.8.1"
@@ -43,7 +44,7 @@ dependencies {
 
 }
 
-mainClassName = "org.splink.cpipe.CPipe"
+mainClassName = "org.splink.cpipe.Run"
 shadowJar {
     exclude "application.conf", "logback.xml"
     mergeServiceFiles()
