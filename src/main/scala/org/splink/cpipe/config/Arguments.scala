@@ -22,16 +22,16 @@ class Arguments(arguments: Seq[String]) extends ScallopConf(arguments) {
       |
       |""".stripMargin)
 
-  val hosts = opt[String](required = true,
+  val hosts = opt[String](required = false,
     descr = "The cassandra host ip(s). Comma-separated, if there is more then one.")
 
   val port = opt[Int](default = Some(Defaults.cassandraPort),
     descr = "Optional, the port, default value is 9042.")
 
-  val keyspace = opt[String](required = true,
+  val keyspace = opt[String](required = false,
     descr = "The name of the keyspace.")
 
-  val table = opt[String](required = true,
+  val table = opt[String](required = false,
     descr = "The name of the table.")
 
   val filter = opt[List[String]](default = Some(Nil),
@@ -84,7 +84,7 @@ class Arguments(arguments: Seq[String]) extends ScallopConf(arguments) {
   val compression = choice(Seq("ON", "OFF"), default = Some("ON"),
     descr = "Use LZ4 compression and trade reduced network traffic for CPU cycles. Defaults to ON")
 
-  val mode = choice(choices = Seq("import", "import2", "export", "export2", "transporter"), required = true,
+  val mode = choice(choices = Seq("import", "import2", "export", "export2", "transporter", "runs-script"), required = true,
     descr = "Select the mode. Choose mode 'import' to import data. " +
       "Choose mode 'import2' to import data with a prepared statement (faster, but only for tables with fixed columns); " +
       "Choose mode 'export' to export data (optional with a filter); " +
