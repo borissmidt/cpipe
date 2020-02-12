@@ -1,8 +1,11 @@
-package org.splink.cpipe.config
-import java.lang.Thread.UncaughtExceptionHandler
-import java.util.concurrent.{Executors, SynchronousQueue, ThreadFactory, ThreadPoolExecutor, TimeUnit}
+package org.splink.cpipe
 
+import java.lang.Thread.UncaughtExceptionHandler
+import java.util.concurrent.{Executors, ThreadFactory}
+
+import com.datastax.driver.core.ConsistencyLevel
 import com.typesafe.scalalogging.LazyLogging
+import org.splink.cpipe.config.Settings
 
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
@@ -15,26 +18,26 @@ object Defaults extends LazyLogging {
   val cassandraTimeoutMilis = 10.minutes.toMillis.toInt
   val cassandraPort = 9042
 
-  val batchSize = 500
+  val batchSize = 10
   val fetchSize = 5000
 
-
-  val ioPool = implicits.ioPool
-  object implicits {
-    implicit val ioPool = ExecutionContext.fromExecutor(
-      Executors.newCachedThreadPool(
-        ThreadFactoryBuilder(
-          "io",
-          reporter = new UncaughtExceptionHandler {
-            override def uncaughtException(thread: Thread, throwable: Throwable): Unit = {
-              logger.error(s"unhandled exception: ${thread.getName}", throwable)
-            }
-          },
-          daemonic = true
-        )
+  implicit val ioPool = ExecutionContext.fromExecutor(
+    Executors.newCachedThreadPool(
+      ThreadFactoryBuilder(
+        "io",
+        reporter = new UncaughtExceptionHandler {
+          override def uncaughtException(thread: Thread, throwable: Throwable): Unit = {
+            logger.error(s"unhandled exception: ${thread.getName}", throwable)
+          }
+        },
+        daemonic = true
       )
     )
-  }
+  )
+
+  implicit val settings = Settings(
+    fetchSize,batchSize,ConsistencyLevel.ONE
+  )
 
 }
 

@@ -63,10 +63,10 @@ class Exporter2 extends Processor {
 
     if (config.flags.verbose) Output.log(s"Got ${compactedRanges.size} compacted ranges")
 
-    val groupedRanges = compactedRanges.grouped(config.settings.threads).toList
+    val groupedRanges = compactedRanges.grouped(1).toList
 
     if (showProgress && config.flags.verbose)
-      Output.update(s"Query ${compactedRanges.size} ranges, ${config.settings.threads} in parallel.")
+      Output.update(s"Query ${compactedRanges.size} ranges, 1 in parallel.")
 
     def fetchGroups(groups: List[List[TokenRange]]): Future[Unit] =
       groups match {

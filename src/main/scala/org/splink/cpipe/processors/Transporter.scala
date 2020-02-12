@@ -1,23 +1,18 @@
 package org.splink.cpipe.processors
-import java.util.concurrent.{Executor, Executors}
 import java.util.concurrent.atomic.{AtomicInteger, AtomicLong}
 
-import com.datastax.driver.core.querybuilder.QueryBuilder
-import com.datastax.driver.core.utils.MoreFutures
-import com.datastax.driver.core.{ArrayBackedRow, PreparedStatement, RegularStatement, Row, Session, SimpleStatement, Statement}
-import com.google.common.util.concurrent.{FutureCallback, Futures, ListenableFuture}
+import com.datastax.driver.core.querybuilder.{Batch, QueryBuilder}
+import com.datastax.driver.core.{BatchStatement, RegularStatement, Session, SimpleStatement}
 import com.typesafe.scalalogging.LazyLogging
-import org.rogach.scallop.ArgType.V
 import org.splink.cpipe.Cassandra.CassandraHelper
-import org.splink.cpipe.Rps
-import org.splink.cpipe.config.{Config, Defaults, Selection}
+import org.splink.cpipe.Defaults
+import org.splink.cpipe.config.Selection
+import org.splink.cpipe.util.FuturesExtended._
+import org.splink.cpipe.util.{RowConversions, RowData}
 
-import scala.concurrent.{ExecutionContext, Promise}
+import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration._
-import scala.jdk.CollectionConverters._
 import scala.util.control.NonFatal
-import FuturesExtended._
-
 import scala.util.{Failure, Success}
 
 /**
@@ -55,7 +50,7 @@ case class Transporter(from: Session, to: Session) extends LazyLogging {
     }
   }
 
-  def batch(queries: Seq[RegularStatement]) = {
+  def makeBatch(queries: Seq[RegularStatement]) = {
     QueryBuilder.unloggedBatch(queries: _*)
   }
 
@@ -65,27 +60,42 @@ case class Transporter(from: Session, to: Session) extends LazyLogging {
       .values(names, values)
   }
 
-  def process(selectionFrom: Selection, toSelection: Selection, keep: RowData => Boolean, batchSize: Int = Defaults.batchSize): Int = {
+  private def executeBatch(query: Batch) = {
+    Future {
+      to.execute {
+        query
+      }
+    }(Defaults.ioPool)
+      .onComplete {
+        case Success(value) => value
+        case Failure(exception) => logger.warn(s"insertion failed ${query}", exception)
+      }(ExecutionContext.global)
+    }
 
+  def process(selectionFrom: Selection, toSelection: Selection, keep: RowData => Option[RowData], batchSize: Int = Defaults.batchSize): Int = {
     val reporter = Reporter(batchSize = batchSize)
     try {
+      val total = new AtomicLong()
+      val inserted = new AtomicLong()
+
       val read = selectionToReadQuery(selectionFrom)
       logger.info(s"executing $read")
       CassandraHelper(from)
         .streamQuery(read)
-        .map(rowToMap.rowToDoubleArray)
+        .map(RowConversions.rowToTwinArray)
+        .tapEach{_ =>
+          val count = total.incrementAndGet()
+          val insertedCount = inserted.get()
+          if(count % 10000 == 0) {
+            logger.info(s"for migration ${selectionFrom.table} -> ${toSelection.table} inserted $insertedCount of $count")
+          }
+        }
+        .flatMap(keep) //filter step
+        .tapEach{_ =>inserted.incrementAndGet()}
         .map(data => insertQuery(toSelection, data.names, data.data))
         .sliding(batchSize, batchSize)
-        .map(batch)
-        .foreach { query =>
-          to.executeAsync {
-            query
-          }.asScala.onComplete {
-            case Failure(exception) => logger.warn("insertion failed", exception)
-            case Success(value) => reporter.poke()
-          }(ExecutionContext.global)
-
-        }
+        .map(makeBatch)
+        .foreach { executeBatch }
     } catch {
       case NonFatal(e) => logger.error("i failed master", e)
     }
@@ -93,94 +103,3 @@ case class Transporter(from: Session, to: Session) extends LazyLogging {
   }
 }
 
-object FuturesExtended {
-  implicit class ExtendedListableFuture[T](f: ListenableFuture[T]) {
-    def asScala = {
-      val promise = Promise[T]()
-      val callback = new FutureCallback[T] {
-        override def onSuccess(result: T): Unit = promise.success(result)
-
-        override def onFailure(t: Throwable): Unit = promise.failure(t)
-      }
-      Futures.addCallback(f, callback)
-      promise.future
-    }
-  }
-}
-
-//some helper class for people who whant to use filters this is high performance stuff, why just for fun!
-case class RowData(names: Array[String], data: Array[AnyRef]) extends Iterable[(String, AnyRef)] {
-  override def iterator: Iterator[(String, AnyRef)] = names.iterator.zip(data.iterator)
-
-  def get(name: String): Option[AnyRef] = {
-    var idx = 0
-    while (idx < names.length) {
-      if (names(idx) == name) {
-        return Some(data(idx))
-      }
-      idx += 1
-    }
-    None
-  }
-
-  def get(idx: Int): Option[(String, AnyRef)] = {
-    if (idx < names.length) {
-      Some(names(idx) -> data(idx))
-    } else {
-      None
-    }
-  }
-
-  /**
-    * super fast get only use this when you use an element of names
-    */
-  def getFastUnsafe(name: String): Option[AnyRef] = {
-    var idx = 0
-    while (idx < names.length) {
-      if (names(idx) eq name) {
-        //break
-        return Some(data(idx))
-      }
-      idx += 1
-    }
-    None
-  }
-}
-
-object rowToMap {
-
-  def rowToDoubleArray(row: Row) = {
-    val definitions = row.getColumnDefinitions.asScala
-    val names = new Array[String](definitions.size)
-    val data = new Array[AnyRef](definitions.size)
-    definitions.zipWithIndex.foreach {
-      case (definition, index) =>
-        val column = row.getObject(definition.getName)
-        names(index) = definition.getName
-        data(index) = column
-    }
-    RowData(names, data)
-  }
-
-  def rowToTupleArray(row: Row) = {
-    val definitions = row.getColumnDefinitions.asScala
-    val output = new Array[(String, AnyRef)](definitions.size)
-    definitions.zipWithIndex.foreach {
-      case (definition, index) =>
-        val column = row.getObject(definition.getName)
-        output(index) = (definition.getName -> column)
-    }
-    output
-  }
-
-  def rowToTupleSeq(row: Row) = {
-    val definitions = row.getColumnDefinitions.asScala
-    val output = Map.newBuilder[String, AnyRef]
-    definitions.zipWithIndex.foreach {
-      case (definition, index) =>
-        val column = row.getObject(definition.getName)
-        output.addOne(definition.getName -> column)
-    }
-    output.result()
-  }
-}

@@ -1,6 +1,7 @@
 package org.splink.cpipe.config
 
 import com.datastax.driver.core.ConsistencyLevel
+import org.splink.cpipe.Defaults
 
 final case class Config(mode: String, from: Connection, to: Option[Connection], selection: Selection, toSelection: Selection,flags: Flags, settings: Settings)
 
@@ -80,7 +81,6 @@ case object Config {
       for{
         fetchSize <- fetchSize.toOption
         batchSize <- batchSize.toOption
-        threads <- threads.toOption
         consistencyLevel <- consistencyLevel.toOption.map {
           case cl if cl == ANY.name() => ANY
           case cl if cl == ONE.name() => ONE
@@ -94,8 +94,12 @@ case object Config {
           case cl if cl == LOCAL_SERIAL.name() => LOCAL_SERIAL
           case cl if cl == LOCAL_ONE.name() => LOCAL_ONE
         }
+        useCompression <- compression.toOption.map {
+          case c if c == "ON" => true
+          case _ => false
+        }
       } yield {
-        Settings(fetchSize, batchSize, consistencyLevel, threads)
+        Settings(fetchSize, batchSize, consistencyLevel, useCompression = useCompression)
       }
     }
 
@@ -103,12 +107,8 @@ case object Config {
       for{
         beQuiet <- quiet.toOption
         verbose <- verbose.toOption
-        useCompression <- compression.toOption.map {
-          case c if c == "ON" => true
-          case _ => false
-        }
       } yield {
-        Flags(!beQuiet, useCompression, verbose)
+        Flags(!beQuiet, verbose)
       }
     }
 
@@ -125,6 +125,6 @@ final case class Selection(keyspace: String, table: String, filter: String = "")
 
 final case class Credentials(username: String, password: String)
 
-final case class Flags(showProgress: Boolean, useCompression: Boolean, verbose: Boolean)
+final case class Flags(showProgress: Boolean, verbose: Boolean)
 
-final case class Settings(fetchSize: Int, batchSize: Int, consistencyLevel: ConsistencyLevel, threads: Int, timeoutMillis: Int = Defaults.cassandraTimeoutMilis)
+final case class Settings(fetchSize: Int, batchSize: Int, consistencyLevel: ConsistencyLevel, timeoutMillis: Int = Defaults.cassandraTimeoutMilis,  useCompression: Boolean = true)

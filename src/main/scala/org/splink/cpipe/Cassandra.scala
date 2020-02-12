@@ -3,7 +3,6 @@ package org.splink.cpipe
 import com.datastax.driver.core._
 import com.datastax.driver.core.policies.{DCAwareRoundRobinPolicy, TokenAwarePolicy}
 import com.typesafe.scalalogging.LazyLogging
-import org.splink.cpipe.config.Defaults
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
@@ -20,7 +19,7 @@ object Cassandra {
       fetchSize: Int = Defaults.fetchSize,
       timeoutMillis: Int = Defaults.cassandraTimeoutMilis,
       useCompression: Boolean = true,
-      dc: Option[String] = None
+      clusterName: Option[String] = None
     ): Session = {
     val mb = 1 << 20
     val clusterBuilder = new Cluster.Builder()
@@ -42,7 +41,7 @@ object Cassandra {
         new QueryOptions().setConsistencyLevel(consistencyLevel).setFetchSize(fetchSize)
       )
 
-    val dcBuilder = dc match {
+    val dcBuilder = clusterName match {
       case Some(dcName) =>
         clusterBuilder
           .withLoadBalancingPolicy(
@@ -60,7 +59,7 @@ object Cassandra {
     dcBuilder.build.connect
   }
 
-  import org.splink.cpipe.processors.FuturesExtended._
+  import org.splink.cpipe.util.FuturesExtended._
   case class CassandraHelper(session: Session) extends LazyLogging{
     def getTables(keyspace: String) = {
       session.getCluster.getMetadata.getKeyspace(keyspace).getTables.asScala.toArray
@@ -72,7 +71,6 @@ object Cassandra {
           preFetch(maxCache, newRs)
         }(ExecutionContext.global)
       } else {
-        logger.info("finished prefetch")
         Future.successful(rs)
       }
     }
@@ -80,13 +78,11 @@ object Cassandra {
     def streamQuery(statement: Statement): Iterator[Row] = {
 
       val rs = session.execute(statement)
-      val maxCache = statement.getFetchSize * 16
 
       rs.iterator().asScala.map { row =>
         //we are IO bound currently and prefetching can hit 0.
-        if(rs.getAvailableWithoutFetching == 0 && !rs.isFullyFetched){
-          logger.info("starting prefetch")
-          preFetch(maxCache, rs)
+        if(rs.getAvailableWithoutFetching == statement.getFetchSize && !rs.isFullyFetched){
+          rs.fetchMoreResults()
         }
         row
       }

@@ -35,7 +35,7 @@ class CPipe(args: Array[String]) {
           }
         case "transporter" => {
           val toSession = createSessionFrom(config.to.get, config)
-          Transporter(session, toSession).process(config.selection,config.toSelection, _ => true )
+          Transporter(session, toSession).process(config.selection,config.toSelection, Some(_) )
         }
       }
     } match {
@@ -71,16 +71,11 @@ object CPipe {
       conf.settings.consistencyLevel,
       conf.settings.fetchSize,
       conf.settings.timeoutMillis,
-      conf.flags.useCompression
+      conf.settings.useCompression
     )
 
   def exportConfig(config: Config): Config = {
-    if (config.settings.threads != 1) {
-      Output.log("Export is limited to 1 thread")
-      config.copy(settings = config.settings.copy(threads = 1))
-    } else {
       config
-    }
   }
 
   object ElapsedSecondFormat {

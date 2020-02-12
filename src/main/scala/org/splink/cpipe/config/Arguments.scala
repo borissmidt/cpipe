@@ -1,6 +1,7 @@
 package org.splink.cpipe.config
 
 import org.rogach.scallop.ScallopConf
+import org.splink.cpipe.Defaults
 class Arguments(arguments: Seq[String]) extends ScallopConf(arguments) {
   banner(
     s"""
