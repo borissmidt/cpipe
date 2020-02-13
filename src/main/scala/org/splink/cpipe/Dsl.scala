@@ -30,11 +30,15 @@ object Dsl {
 
     case class CassandraToCassandra(from:  Session, to: Session){
         def migrate(keyspace: String, table: String, selection: String = "") = {
-          Migration(this, keyspace, table, selection, Some(_))
+          DateSource(this, keyspace, table, selection, Some(_))
         }
 
-      def migrateWithFilter(keyspace: String, table: String, selection: String = "")(filter: RowData => Boolean) = {
-        Migration(this, keyspace, table, selection,  Some(_).filter(filter))
+    }
+
+    case class DateSource(cassandra: CassandraToCassandra, fromKeyspace: String, fromTable: String, selection: String, modifierAndFilter: RowData => Option[RowData]){
+
+      def withFilter(filter: RowData => Boolean) = {
+        this.copy(modifierAndFilter = Some(_).filter(filter))
       }
 
       /**
@@ -45,19 +49,41 @@ object Dsl {
        * @param modifierAndFilter a way to modify the data, Return Some to keep return None to remove.
        * @return
        */
-      def migrateWithModifier(keyspace: String, table: String, selection: String = "")(modifierAndFilter: RowData => Option[RowData]) = {
-        Migration(this, keyspace, table, selection, modifierAndFilter)
+      def withFilterModifer(filter: RowData => Option[RowData]) = {
+        this.copy(modifierAndFilter = filter)
+      }
+
+      def to(keyspace: String, table: String) ={
+        Migration(this, keyspace, table)
       }
 
     }
 
-    case class Migration(cassandra: CassandraToCassandra, fromKeyspace: String, fromTable: String, selection: String, modifierAndFilter: RowData => Option[RowData]){
-      def to(keyspace: String, table: String) ={
-        Transporter(cassandra.from, cassandra.to).process(Selection(fromKeyspace,fromTable,  selection),Selection(keyspace,table), modifierAndFilter)
+    case class Migration(source: DateSource, toKeyspace: String, toTable: String){
+      import source._
+
+      def run = {
+        Transporter(cassandra.from, cassandra.to).process(Selection(fromKeyspace,fromTable,  selection),Selection(toKeyspace,toTable), modifierAndFilter)
       }
 
-      def toAsync(keyspace: String, table: String)(implicit ex: ExecutionContext)= Future{
-        to(keyspace, table)
+      def runAsync(implicit ex: ExecutionContext = Defaults.ioPool) = Future{
+        run
+      }
+
+      def withFilter(filter: RowData => Boolean) = {
+        this.copy(source=source.copy(modifierAndFilter = Some(_).filter(filter)))
+      }
+
+      /**
+       *
+       * @param keyspace the origin keyspace
+       * @param table the origin table
+       * @param selection an optional query part used in the cassandra query
+       * @param modifierAndFilter a way to modify the data, Return Some to keep return None to remove.
+       * @return
+       */
+      def withFilterModifer(filter: RowData => Option[RowData]) = {
+        this.copy(source=source.copy(modifierAndFilter = filter))
       }
     }
   }
