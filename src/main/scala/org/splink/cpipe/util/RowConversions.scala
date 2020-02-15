@@ -7,7 +7,7 @@ import scala.jdk.CollectionConverters._
 
 object RowConversions {
 
-  def rowToTwinArray(row: Row) = {
+  def rowToRowData(row: Row) = {
     val definitions = row.getColumnDefinitions.asScala
     val names = new Array[String](definitions.size)
     val data = new Array[AnyRef](definitions.size)

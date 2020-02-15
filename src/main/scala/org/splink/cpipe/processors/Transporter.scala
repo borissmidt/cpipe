@@ -82,7 +82,7 @@ case class Transporter(from: Session, to: Session) extends LazyLogging {
       logger.info(s"executing $read")
       CassandraHelper(from)
         .streamQuery(read)
-        .map(RowConversions.rowToTwinArray)
+        .map(RowConversions.rowToRowData)
         .tapEach{_ =>
           val count = total.incrementAndGet()
           val insertedCount = inserted.get()

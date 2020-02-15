@@ -40,7 +40,10 @@ dependencies {
     compile "org.lz4:lz4-java:$lz4Version"
     // Test dependencies
     testCompile "org.scalatest:scalatest_${scalaLangVersion}:${scalaTestVersion}"
-    testCompile "org.pegdown:pegdown:${pegdownVersion}"
+    testRuntime "org.pegdown:pegdown:${pegdownVersion}"
+
+    def version = "0.42.14"
+    testRuntime "com.vladsch.flexmark:flexmark-all:$version"
 
 }
 

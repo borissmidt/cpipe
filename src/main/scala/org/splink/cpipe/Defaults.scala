@@ -3,8 +3,9 @@ package org.splink.cpipe
 import java.lang.Thread.UncaughtExceptionHandler
 import java.util.concurrent.{Executors, ThreadFactory}
 
-import com.datastax.driver.core.ConsistencyLevel
+import com.datastax.driver.core.{ConsistencyLevel, Session}
 import com.typesafe.scalalogging.LazyLogging
+import org.splink.cpipe.Cassandra.CassandraHelper
 import org.splink.cpipe.config.Settings
 
 import scala.concurrent.ExecutionContext
@@ -39,6 +40,11 @@ object Defaults extends LazyLogging {
     fetchSize,batchSize,ConsistencyLevel.ONE
   )
 
+  implicit class CassandraHelperUtil(s: Session){
+    def helper={
+      CassandraHelper(s)
+    }
+  }
 }
 
 object ThreadFactoryBuilder {

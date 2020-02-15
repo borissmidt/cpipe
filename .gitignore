@@ -9,3 +9,4 @@
 *~
 *.BAK
 *.OLD
+/src/main/scala/scripts/MigrateCassandra.sc
