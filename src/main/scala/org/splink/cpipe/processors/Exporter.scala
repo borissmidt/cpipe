@@ -18,17 +18,20 @@ class Exporter extends Processor {
 
     if (config.flags.showProgress) Output.update("Execute query.")
 
-    val statement = new SimpleStatement(s"select * from ${config.selection.table} ${config.selection.filter};")
+    val statement = new SimpleStatement(
+      s"select * from ${config.selection.table} ${config.selection.filter};"
+    )
 
     CassandraHelper(session)
-      .streamQuery(statement)
+      .pagedStream(statement)
+      .flatMap(_.rows)
       .foreach { row =>
-      rps.compute()
-      if (showProgress) Output.update(s"${rps.count} rows at $rps rows/sec.")
+        rps.compute()
+        if (showProgress) Output.update(s"${rps.count} rows at $rps rows/sec.")
 
-      val json = row2Json(row)
-      Console.println(Json.prettyPrint(json))
-    }
+        val json = row2Json(row)
+        Console.println(Json.prettyPrint(json))
+      }
     rps.count
   }
 

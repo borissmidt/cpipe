@@ -35,7 +35,7 @@ class CPipe(args: Array[String]) {
           }
         case "transporter" => {
           val toSession = createSessionFrom(config.to.get, config)
-          Transporter(session, toSession).process(config.selection,config.toSelection, Some(_) )
+          Transporter(session, toSession).process(config.selection, config.toSelection, Some(_))
         }
       }
     } match {
@@ -75,7 +75,7 @@ object CPipe {
     )
 
   def exportConfig(config: Config): Config = {
-      config
+    config
   }
 
   object ElapsedSecondFormat {

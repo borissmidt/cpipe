@@ -4,6 +4,7 @@ import com.datastax.driver.core._
 import com.datastax.driver.core.policies.{DCAwareRoundRobinPolicy, TokenAwarePolicy}
 import com.typesafe.scalalogging.LazyLogging
 
+import scala.collection.immutable.ArraySeq
 import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
 import scala.util.{Failure, Success}
@@ -31,7 +32,8 @@ object Cassandra {
       .withPort(port)
       .withCredentials(username, password)
       .withSocketOptions(
-        new SocketOptions().setKeepAlive(true)
+        new SocketOptions()
+          .setKeepAlive(true)
           .setConnectTimeoutMillis(timeoutMillis * 2)
           .setReadTimeoutMillis(timeoutMillis)
           .setReceiveBufferSize(32 * mb)
@@ -59,33 +61,47 @@ object Cassandra {
     dcBuilder.build.connect
   }
 
+  /**
+    * class is not thread safe, i.e. its an iterator
+    * @param rs
+    */
+  final case class Page(pageMarker: Option[PagingState], rows: Seq[Row])
+
+  trait Cancelable {
+    def cancel(): Unit
+  }
+
+  //a heapload of stuff to get the next page out of the result :(
+  class PagedResultSet(rs: ResultSet) extends Iterator[Page] with Cancelable {
+    var iter = rs.iterator().asScala
+    var canceled = false
+    override def hasNext: Boolean = !rs.isExhausted && !canceled
+
+    def next(): Page = {
+      val pageSize = rs.getAvailableWithoutFetching()
+      val (fetchedIter, stillInDb) = iter.splitAt(pageSize)
+      val fetched = ArraySeq.from(fetchedIter)
+      iter = stillInDb
+      Page(
+        rs.getAllExecutionInfo.asScala.init.lastOption
+          .flatMap(x => Option(x.getPagingState)),
+        fetched
+      )
+    }
+
+    override def cancel(): Unit = canceled = true
+  }
+
   import org.splink.cpipe.util.FuturesExtended._
-  case class CassandraHelper(session: Session) extends LazyLogging{
+  case class CassandraHelper(session: Session) extends LazyLogging {
     def getTables(keyspace: String) = {
       session.getCluster.getMetadata.getKeyspace(keyspace).getTables.asScala.toArray
     }
 
-    private def preFetch(maxCache: Int, rs: ResultSet): Future[ResultSet] = {
-      if (rs.getAvailableWithoutFetching < maxCache  && !rs.isFullyFetched) {
-        rs.fetchMoreResults().asScala.flatMap { newRs =>
-          preFetch(maxCache, newRs)
-        }(ExecutionContext.global)
-      } else {
-        Future.successful(rs)
-      }
-    }
-
-    def streamQuery(statement: Statement): Iterator[Row] = {
-
-      val rs = session.execute(statement)
-
-      rs.iterator().asScala.map { row =>
-        //we are IO bound currently and prefetching can hit 0.
-        if(rs.getAvailableWithoutFetching == statement.getFetchSize && !rs.isFullyFetched){
-          rs.fetchMoreResults()
-        }
-        row
-      }
+    def pagedStream(statement: Statement, offset: Option[PagingState] = None): PagedResultSet = {
+      val query = offset.map(statement.setPagingState).getOrElse(statement)
+      val rs = session.execute(query)
+      new PagedResultSet(rs)
     }
   }
 }

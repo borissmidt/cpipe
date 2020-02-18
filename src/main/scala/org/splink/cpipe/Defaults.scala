@@ -1,15 +1,17 @@
 package org.splink.cpipe
-
 import java.lang.Thread.UncaughtExceptionHandler
 import java.util.concurrent.{Executors, ThreadFactory}
 
 import com.datastax.driver.core.{ConsistencyLevel, Session}
 import com.typesafe.scalalogging.LazyLogging
 import org.splink.cpipe.Cassandra.CassandraHelper
+import org.splink.cpipe.Dsl.ProgresSaver
 import org.splink.cpipe.config.Settings
 
+import scala.collection.mutable
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
+import better.files._
 
 /**
   * Copyright (C) 06.02.20 - REstore NV
@@ -37,12 +39,33 @@ object Defaults extends LazyLogging {
   )
 
   implicit val settings = Settings(
-    fetchSize,batchSize,ConsistencyLevel.ONE
+    fetchSize,
+    batchSize,
+    ConsistencyLevel.ONE
   )
 
-  implicit class CassandraHelperUtil(s: Session){
-    def helper={
+  implicit class CassandraHelperUtil(s: Session) {
+    def helper = {
       CassandraHelper(s)
+    }
+  }
+
+  implicit val fileProgresssSaver = new ProgresSaver {
+    val files = mutable.Map[String, File]()
+
+    override def save(key: String, data: String): Unit = synchronized {
+      val file = files.getOrElseUpdate(key, file"progress/$key")
+      file.createFileIfNotExists(true)
+      file.overwrite(data)
+    }
+
+    override def read(key: String): Option[String] = {
+      val file = files.getOrElseUpdate(key, file"progress/$key")
+      if (file.exists) {
+        Some(file.lines.last)
+      } else {
+        None
+      }
     }
   }
 }

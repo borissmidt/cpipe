@@ -21,9 +21,10 @@ dependencies {
     compile "ch.qos.logback:logback-classic:${logbackVersion}"
     compile "org.slf4j:slf4j-api:${slf4jVersion}"
 
+    def betterfilesVersion = "3.8.0"
+    compile "com.github.pathikrit:better-files_$scalaLangVersion:$betterfilesVersion"
 
-    compile "com.typ" +
-        "esafe:config:${typesafeVersion}"
+    compile "com.typesafe:config:${typesafeVersion}"
 
     // Cassandra
     compile "com.datastax.cassandra:cassandra-driver-core:3.6.0"
@@ -42,7 +43,7 @@ dependencies {
     testCompile "org.scalatest:scalatest_${scalaLangVersion}:${scalaTestVersion}"
     testRuntime "org.pegdown:pegdown:${pegdownVersion}"
 
-    def version = "0.42.14"
+    def version = "0.35.10"
     testRuntime "com.vladsch.flexmark:flexmark-all:$version"
 
 }
